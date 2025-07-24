@@ -168,18 +168,45 @@ def parse_args():
     )
 
     parser.add_argument("--log-level", type=int, default=30)
+    
+    parser.add_argument(
+        "--type-overrides",
+        type=str,
+        help="JSON string of column type overrides, e.g. '{\"col1\": \"float32\", \"col2\": \"int16\"}'. "
+        "Supported types: float32, float64, int16, int32, int64, uint16, uint32, uint64"
+    )
+    
     arguments = sys.argv[1:]
     args = parser.parse_args(arguments)
+    
+    # Parse type overrides if provided
+    if args.type_overrides:
+        import json
+        try:
+            override_dict = json.loads(args.type_overrides)
+            type_overrides = {}
+            for col, type_str in override_dict.items():
+                if hasattr(pa, type_str):
+                    type_overrides[col] = getattr(pa, type_str)()
+                else:
+                    raise ValueError(f"Unsupported type: {type_str}")
+            args.type_overrides = type_overrides
+        except (json.JSONDecodeError, ValueError) as e:
+            raise ValueError(f"Invalid type-overrides format: {e}")
+    else:
+        args.type_overrides = None
 
     return {**DEFAULTS, **vars(args)}
 
 
 # First, we guess at the schema using pyarrow's own type hints.
 # This could be overridden by user args.
-def refine_schema(schema: pa.Schema) -> Dict[str, pa.DataType]:
+def refine_schema(schema: pa.Schema, type_overrides: Dict[str, pa.DataType] = None) -> Dict[str, pa.DataType]:
     """ " """
     fields = {}
     seen_ix = False
+    type_overrides = type_overrides or {}
+    
     for el in schema:
         if el.name == "ix":
             fields[el.name] = pa.uint64()
@@ -187,6 +214,9 @@ def refine_schema(schema: pa.Schema) -> Dict[str, pa.DataType]:
         elif pa.types.is_date(el.type):
             # Deepscatter can't handle all the different date types.
             fields[el.name] = pa.timestamp("ms")
+        elif el.name in type_overrides:
+            # Allow explicit type overrides for 32-bit/16-bit support
+            fields[el.name] = type_overrides[el.name]
         else:
             fields[el.name] = el.type
     if not seen_ix:
@@ -312,6 +342,7 @@ def main(
     randomize=0,
     limits=None,
     filesystem: fs.FileSystem = fs.LocalFileSystem(),
+    type_overrides: Dict[str, pa.DataType] = None,
 ):
     """
     Run a tiler
@@ -366,7 +397,7 @@ def main(
         elif files[0].suffix == ".parquet":
             first_batch = pq.ParquetFile(files[0])
             raw_schema = first_batch.schema_arrow
-        schema = refine_schema(raw_schema)
+        schema = refine_schema(raw_schema, type_overrides)
         elements = {name: type for name, type in schema.items()}
         if not "ix" in elements:
             # Must always be an ix field.
