@@ -173,7 +173,7 @@ def parse_args():
         "--type-overrides",
         type=str,
         help="JSON string of column type overrides, e.g. '{\"col1\": \"float32\", \"col2\": \"int16\"}'. "
-        "Supported types: float32, float64, int16, int32, int64, uint16, uint32, uint64"
+        "Supported types: float16, float32, float64, int8, int16, int32, int64, uint8, uint16, uint32, uint64"
     )
     
     arguments = sys.argv[1:]
@@ -224,7 +224,7 @@ def refine_schema(schema: pa.Schema, type_overrides: Dict[str, pa.DataType] = No
     return fields
 
 
-def determine_schema(files: List[Path]):
+def determine_schema(files: List[Path], type_overrides: Dict[str, pa.DataType] = None):
     vals = csv.open_csv(
         files[0],
         csv.ReadOptions(block_size=1024 * 1024 * 64),
@@ -232,23 +232,35 @@ def determine_schema(files: List[Path]):
             auto_dict_encode=True, auto_dict_max_cardinality=4094
         ),
     )
-    override = {}
+    type_overrides = type_overrides or {}
 
     raw_schema = vals.read_next_batch().schema
 
     schema = {}
     for el in raw_schema:
         t = el.type
-        schema[el.name] = t
-        if el.name in override:
-            schema[el.name] = getattr(pa, override[el.name])()
+        if el.name in type_overrides:
+            # Apply user-specified type overrides
+            schema[el.name] = type_overrides[el.name]
+        else:
+            schema[el.name] = t
     schema["ix"] = pa.uint64()
-    schema_safe = dict(
-        [
-            (k, v if not pa.types.is_dictionary(v) else pa.string())
-            for k, v in schema.items()
-        ]
-    )
+    # For CSV reading, we need to avoid types that CSV reader can't handle directly
+    # and cast them later during processing
+    unsupported_csv_types = {pa.float16()}
+    
+    schema_safe = {}
+    for k, v in schema.items():
+        if pa.types.is_dictionary(v):
+            schema_safe[k] = pa.string()
+        elif v in unsupported_csv_types:
+            # Use float64 for CSV reading, cast to float16 later
+            if v == pa.float16():
+                schema_safe[k] = pa.float64()
+            else:
+                schema_safe[k] = v
+        else:
+            schema_safe[k] = v
     return schema, schema_safe
 
 
@@ -362,7 +374,7 @@ def main(
         extent = Rectangle(**extent)
     dirs_to_cleanup = []
     if files[0].suffix == ".csv" or str(files[0]).endswith(".csv.gz"):
-        schema, schema_safe = determine_schema(files)
+        schema, schema_safe = determine_schema(files, type_overrides)
         # currently the dictionary type isn't supported while reading CSVs.
         # So we have to do some monkey business to store it as keys at first, then convert to dictionary later.
         logger.debug(schema)
