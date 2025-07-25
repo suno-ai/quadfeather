@@ -51,7 +51,7 @@ class Rectangle:
 @dataclass
 class TileManifest:
     key: str
-    nPoints: int
+    n_points: int
     children: List["TileManifest"]
     min_ix: int
     max_ix: int
@@ -71,12 +71,16 @@ def flatten_manifest(mani: TileManifest) -> List[Dict]:
     
     while len(queue) > 0:
         current = queue.pop(0)
+        extent_dict = current.to_dict()["extent"]
         d.append({
             "key": current.key,
-            "nPoints": current.nPoints, 
+            "n_points": current.n_points, 
             "min_ix": current.min_ix,
             "max_ix": current.max_ix,
-            "extent": json.dumps(current.to_dict()["extent"]),
+            "min_x": float(extent_dict["x"][0]),
+            "max_x": float(extent_dict["x"][1]),
+            "min_y": float(extent_dict["y"][0]),
+            "max_y": float(extent_dict["y"][1]),
         })
         queue.extend(current.children)
         
@@ -530,13 +534,10 @@ class Quadtree:
             manifest = feather.read_table(f)
         sidecars = json.loads(manifest.schema.metadata[b"sidecars"])
         schema = pa.ipc.read_schema(BytesIO(bytes(manifest.schema.metadata[b"schema"])))
-        extent = manifest.filter(pc.equal(manifest["key"], "0/0/0"))["extent"][
-            0
-        ].as_py()
-        loaded = json.loads(extent)
+        root_row = manifest.filter(pc.equal(manifest["key"], "0/0/0"))
         extent = Rectangle(
-            x=tuple(loaded["x"]),
-            y=tuple(loaded["y"]),
+            x=(root_row["min_x"][0].as_py(), root_row["max_x"][0].as_py()),
+            y=(root_row["min_y"][0].as_py(), root_row["max_y"][0].as_py()),
         )
         return Quadtree(
             basedir=basedir,
@@ -697,8 +698,7 @@ class Quadtree:
         for f in files:
             k = tuple(map(int, f["key"].split("/")))
             assert len(k) == 3
-            r = json.loads(f["extent"])
-            lookups[k] = Rectangle(x=(r["x"][0], r["x"][1]), y=(r["y"][0], r["y"][1]))
+            lookups[k] = Rectangle(x=(f["min_x"], f["max_x"]), y=(f["min_y"], f["max_y"]))
         to_check: List[Tuple[int, int, int]] = [(0, 0, 0)]
         ordered_list = []
         while len(to_check) > 0:
@@ -1361,7 +1361,7 @@ class Tile:
         self.total_points += self.n_data_points
         self.manifest = TileManifest(
             key=self.id,
-            nPoints=self.n_data_points,
+            n_points=self.n_data_points,
             children=children,
             min_ix=min_ix,
             max_ix=max_ix,

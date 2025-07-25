@@ -69,7 +69,7 @@ class TestCSV:
         )
         tb = feather.read_table(tmp_path / "tiles" / "manifest.feather")
         assert tb.num_rows > 4
-        assert sum(tb["nPoints"].to_pylist()) == 100_000
+        assert sum(tb["n_points"].to_pylist()) == 100_000
 
     def test_demo_date_as_str_small_block(self, tmp_path):
         demo_main(tmp_path / "test.csv", SIZE=100_000)
@@ -81,7 +81,7 @@ class TestCSV:
         )
         root = str(tmp_path / "tiles")
         t = feather.read_table(tmp_path / "tiles" / "manifest.feather")
-        length = pc.sum(t["nPoints"]).as_py()
+        length = pc.sum(t["n_points"]).as_py()
         assert length == 100_000
 
     def test_categorical_cast(self, tmp_path):
@@ -171,8 +171,8 @@ class TestCSV:
             sidecars={"ix": "ix"},
         )
         tb = feather.read_table(tmp_path / "tiles" / "manifest.feather")
-        assert sum(tb["nPoints"].to_pylist()) == 1_000_000
-        assert all([row <= 1000 for row in tb["nPoints"].to_pylist()])
+        assert sum(tb["n_points"].to_pylist()) == 1_000_000
+        assert all([row <= 1000 for row in tb["n_points"].to_pylist()])
         tb1 = qtree.read_root_table("")
         assert tb1.num_rows == 100
 
@@ -201,7 +201,7 @@ class TestFancyFormats:
             first_tile_size=1000,
         )
         manifest = qtree.manifest_table
-        assert pc.sum(manifest["nPoints"]).as_py() == size
+        assert pc.sum(manifest["n_points"]).as_py() == size
         tb = feather.read_table(tmp_path / "tiles" / "0/0/0.feather")
         assert "date" in tb.column_names
         assert pa.types.is_timestamp(tb["date2"].type)
@@ -217,7 +217,7 @@ class TestParquet:
             first_tile_size=1000,
         )
         manifest = qtree.manifest_table
-        assert pc.sum(manifest["nPoints"]).as_py() == size
+        assert pc.sum(manifest["n_points"]).as_py() == size
         tb = feather.read_table(tmp_path / "tiles" / "0/0/0.feather")
         ps = tb["ix"].to_pylist()
         assert ps[0] == 0
@@ -236,7 +236,7 @@ class TestManyLittleFiles:
             sidecars={"class": "class_sidecar"},
         )
         manifest = qtree.manifest_table
-        assert pc.sum(manifest["nPoints"]).as_py() == size
+        assert pc.sum(manifest["n_points"]).as_py() == size
         tb = feather.read_table(tmp_path / "tiles" / "0/0/0.feather")
         ps = tb["ix"].to_pylist()
         assert ps[0] == 0
@@ -272,7 +272,7 @@ class TestStreaming:
 
         manifest = qtree.manifest_table
 
-        assert pc.sum(manifest["nPoints"]).as_py() == size
+        assert pc.sum(manifest["n_points"]).as_py() == size
 
         tb = feather.read_table(tmp_path / "tiles" / "0/0/0.feather")
         assert "banana" in tb['class'].to_pylist()
