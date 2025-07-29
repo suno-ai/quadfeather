@@ -74,13 +74,10 @@ def flatten_manifest(mani: TileManifest) -> List[Dict]:
         extent_dict = current.to_dict()["extent"]
         d.append({
             "key": current.key,
-            "n_points": current.n_points, 
+            "nPoints": current.n_points, 
             "min_ix": current.min_ix,
             "max_ix": current.max_ix,
-            "min_x": float(extent_dict["x"][0]),
-            "max_x": float(extent_dict["x"][1]),
-            "min_y": float(extent_dict["y"][0]),
-            "max_y": float(extent_dict["y"][1]),
+            "extent": extent_dict,
         })
         queue.extend(current.children)
         
